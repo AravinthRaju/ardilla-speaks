@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Ardilla Speaks – Voice Tutor</title>
+<title>DeutschMeister – Voice Tutor</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -433,7 +433,6 @@ html, body {
 <div class="bg-layer"></div>
 <div class="stars"></div>
 
-<!-- API Modal -->
 <div class="modal-overlay hidden" id="apiModal">
   <div class="modal">
     <h3>🔑 Gemini API Key</h3>
@@ -446,7 +445,6 @@ html, body {
   </div>
 </div>
 
-<!-- History backdrop + drawer -->
 <div class="backdrop" id="backdrop" onclick="closeHistory()"></div>
 <div class="history-drawer" id="historyDrawer">
   <div class="drawer-handle"></div>
@@ -456,7 +454,6 @@ html, body {
   </div>
 </div>
 
-<!-- App -->
 <div class="app">
 
   <div class="header">
@@ -686,7 +683,7 @@ async function callGemini(messages, sysPrompt) {
   };
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`,
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
   );
 
