@@ -436,7 +436,7 @@ html, body {
 <div class="modal-overlay hidden" id="apiModal">
   <div class="modal">
     <h3>🔑 Gemini API Key</h3>
-    <p>Get your free key at <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a> — no credit card needed. 1,500 free conversations/day!</p>
+    <p>Get your free key at <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a> — no credit card needed. 1,000 free conversations/day!</p>
     <input class="modal-input" type="password" id="apiKeyInput" placeholder="AIza..." />
     <div class="modal-actions">
       <button class="btn-secondary" onclick="closeModal()">Cancel</button>
@@ -510,15 +510,16 @@ html, body {
 
 <script>
 // ── State ─────────────────────────────────────────────────────────
-let apiKey      = localStorage.getItem('dm_gemini_key') || '';
-let level       = localStorage.getItem('dm_level') || 'B1';
-let chatHistory = [];
-let isListening = false;
-let isSpeaking  = false;
-let isProcessing= false;
-let recognition = null;
-const synth     = window.speechSynthesis;
-const SR        = window.SpeechRecognition || window.webkitSpeechRecognition;
+let apiKey        = localStorage.getItem('dm_gemini_key') || '';
+let level         = localStorage.getItem('dm_level') || 'B1';
+let chatHistory   = [];
+let isListening   = false;
+let isSpeaking    = false;
+let isProcessing  = false;
+let audioUnlocked = false; // Audio unlock flag
+let recognition   = null;
+const synth       = window.speechSynthesis;
+const SR          = window.SpeechRecognition || window.webkitSpeechRecognition;
 
 // ── DOM ────────────────────────────────────────────────────────────
 const orbWrapper       = document.getElementById('orbWrapper');
@@ -585,8 +586,16 @@ function flash(txt, cls, ms) {
   setTimeout(hideBubble, ms || 2000);
 }
 
-// ── Orb click ──────────────────────────────────────────────────────
+// ── Orb click & Mobile Audio Unlock ────────────────────────────────
 function handleOrbClick() {
+  // 1. Unlock the browser's audio engine on the very first tap
+  if (!audioUnlocked && synth) {
+    const unlockUtt = new SpeechSynthesisUtterance('');
+    synth.speak(unlockUtt);
+    audioUnlocked = true;
+  }
+
+  // 2. Normal orb logic
   if (isSpeaking)   { stopSpeaking(); return; }
   if (isProcessing) { return; }
   if (isListening)  { stopListening(); return; }
@@ -701,7 +710,7 @@ function systemPrompt() {
   const guides = {
     A1: `Speak ONLY in simple English. Mix in 1-2 German words per reply and always translate them. Very short sentences. Super warm and patient. Always end with an easy question.`,
     A2: `Speak mostly English, include simple German phrases (always translated). Use present tense. Very gentle with errors. 2 sentences max. End with a simple question or German phrase to repeat.`,
-    B1: `Mix German and English roughly 50/50. Present and past tense. Gently weave corrections in naturally. Engaging and encouraging. Always end with a question in German.`,
+    B1: `Mix German and English roughly, standard german. Present and past tense. Gently weave corrections in naturally. Engaging and encouraging. Always end with a question in German.`,
     B2: `Speak mostly German (70%). Introduce varied tenses and vocabulary. Correct errors smoothly in conversation. Challenge them a little. End with a German question.`,
     C1: `Speak almost entirely in German (90%). Use idioms, rich vocabulary, complex structures. Only correct significant errors. Natural, genuine conversation. End with a thought-provoking question.`,
     C2: `Speak exclusively in German. Sophisticated vocabulary, regional nuance, complex grammar. Converse as with a native speaker. Rarely correct. Engaging, intellectual dialogue.`
