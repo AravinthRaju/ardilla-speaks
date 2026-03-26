@@ -289,6 +289,69 @@ html, body {
   color: #f0e0b0; font-style: italic;
 }
 
+/* Correction card */
+.correction-card {
+  width: 100%;
+  border-radius: 16px;
+  padding: 14px 16px;
+  font-size: 13px; line-height: 1.65;
+  opacity: 0; transform: translateY(8px);
+  transition: all 0.4s cubic-bezier(0.22,1,0.36,1);
+  display: none;
+}
+.correction-card.visible {
+  opacity: 1; transform: translateY(0); display: block;
+}
+.correction-card.has-errors {
+  background: rgba(255,95,109,0.07);
+  border: 1px solid rgba(255,95,109,0.25);
+}
+.correction-card.all-good {
+  background: rgba(67,233,123,0.07);
+  border: 1px solid rgba(67,233,123,0.22);
+}
+.correction-card.mixed {
+  background: rgba(240,192,96,0.06);
+  border: 1px solid rgba(240,192,96,0.22);
+}
+.correction-label {
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 2px; text-transform: uppercase;
+  margin-bottom: 8px; display: flex; align-items: center; gap: 6px;
+}
+.correction-card.has-errors .correction-label { color: var(--danger); }
+.correction-card.all-good   .correction-label { color: var(--success); }
+.correction-card.mixed      .correction-label { color: var(--gold); }
+
+.correction-row {
+  margin-bottom: 8px; padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.correction-row:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+.correction-wrong {
+  color: var(--danger); text-decoration: line-through;
+  font-size: 13px; margin-bottom: 2px;
+}
+.correction-right {
+  color: var(--success); font-weight: 600; font-size: 13px; margin-bottom: 2px;
+}
+.correction-why {
+  color: var(--muted); font-size: 12px; font-style: italic;
+}
+.praise-text {
+  color: var(--success); font-size: 13px; font-weight: 500;
+}
+.stats-row {
+  display: flex; gap: 10px; margin-top: 10px; padding-top: 10px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+.stat-chip {
+  flex: 1; text-align: center; padding: 6px 8px;
+  border-radius: 10px; font-size: 11px; font-weight: 600;
+}
+.stat-chip.good { background: rgba(67,233,123,0.1); color: var(--success); }
+.stat-chip.bad  { background: rgba(255,95,109,0.1); color: var(--danger); }
+
 /* Bottom controls */
 .bottom-controls {
   width: 100%;
@@ -433,10 +496,11 @@ html, body {
 <div class="bg-layer"></div>
 <div class="stars"></div>
 
+<!-- API Modal -->
 <div class="modal-overlay hidden" id="apiModal">
   <div class="modal">
     <h3>🔑 Gemini API Key</h3>
-    <p>Get your free key at <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a> — no credit card needed. 1,000 free conversations/day!</p>
+    <p>Get your free key at <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a> — no credit card needed. 1,500 free conversations/day!</p>
     <input class="modal-input" type="password" id="apiKeyInput" placeholder="AIza..." />
     <div class="modal-actions">
       <button class="btn-secondary" onclick="closeModal()">Cancel</button>
@@ -445,6 +509,7 @@ html, body {
   </div>
 </div>
 
+<!-- History backdrop + drawer -->
 <div class="backdrop" id="backdrop" onclick="closeHistory()"></div>
 <div class="history-drawer" id="historyDrawer">
   <div class="drawer-handle"></div>
@@ -454,6 +519,7 @@ html, body {
   </div>
 </div>
 
+<!-- App -->
 <div class="app">
 
   <div class="header">
@@ -496,6 +562,10 @@ html, body {
 
     <div class="status-text" id="statusText">Tap to start speaking</div>
     <div class="transcript-bubble" id="transcriptBubble"></div>
+    <div class="correction-card" id="correctionCard">
+      <div class="correction-label" id="correctionLabel"></div>
+      <div id="correctionBody"></div>
+    </div>
   </div>
 
   <div class="bottom-controls">
@@ -510,16 +580,17 @@ html, body {
 
 <script>
 // ── State ─────────────────────────────────────────────────────────
-let apiKey        = localStorage.getItem('dm_gemini_key') || '';
-let level         = localStorage.getItem('dm_level') || 'B1';
-let chatHistory   = [];
-let isListening   = false;
-let isSpeaking    = false;
-let isProcessing  = false;
-let audioUnlocked = false; // Audio unlock flag
-let recognition   = null;
-const synth       = window.speechSynthesis;
-const SR          = window.SpeechRecognition || window.webkitSpeechRecognition;
+let apiKey      = localStorage.getItem('dm_gemini_key') || '';
+let level       = localStorage.getItem('dm_level') || 'B1';
+let chatHistory = [];
+let totalCorrect = 0;
+let totalErrors  = 0;
+let isListening = false;
+let isSpeaking  = false;
+let isProcessing= false;
+let recognition = null;
+const synth     = window.speechSynthesis;
+const SR        = window.SpeechRecognition || window.webkitSpeechRecognition;
 
 // ── DOM ────────────────────────────────────────────────────────────
 const orbWrapper       = document.getElementById('orbWrapper');
@@ -586,16 +657,8 @@ function flash(txt, cls, ms) {
   setTimeout(hideBubble, ms || 2000);
 }
 
-// ── Orb click & Mobile Audio Unlock ────────────────────────────────
+// ── Orb click ──────────────────────────────────────────────────────
 function handleOrbClick() {
-  // 1. Unlock the browser's audio engine on the very first tap
-  if (!audioUnlocked && synth) {
-    const unlockUtt = new SpeechSynthesisUtterance('');
-    synth.speak(unlockUtt);
-    audioUnlocked = true;
-  }
-
-  // 2. Normal orb logic
   if (isSpeaking)   { stopSpeaking(); return; }
   if (isProcessing) { return; }
   if (isListening)  { stopListening(); return; }
@@ -662,15 +725,28 @@ async function processUserSpeech(text) {
   setState('processing');
   setStatus('Thinking…', '');
   showBubble(text, 'user-text');
+  hideCorrectionCard();
 
   chatHistory.push({ role: 'user', content: text });
   if (chatHistory.length > 30) chatHistory = chatHistory.slice(-28);
 
   try {
-    const reply = await callGemini(chatHistory, systemPrompt());
+    // Run both calls in parallel — analysis + conversational reply
+    const [analysisRaw, reply] = await Promise.all([
+      callGemini([{ role: 'user', content: text }], analysisPrompt()),
+      callGemini(chatHistory, systemPrompt())
+    ]);
+
     chatHistory.push({ role: 'assistant', content: reply });
     updateCount();
     isProcessing = false;
+
+    // Parse and show correction card
+    try {
+      const analysis = JSON.parse(analysisRaw.replace(/```json|```/g,'').trim());
+      renderCorrectionCard(analysis);
+    } catch(_) { /* silently skip if parse fails */ }
+
     speakReply(reply);
   } catch(e) {
     isProcessing = false;
@@ -692,7 +768,7 @@ async function callGemini(messages, sysPrompt) {
   };
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
   );
 
@@ -708,27 +784,130 @@ async function callGemini(messages, sysPrompt) {
 // ── System prompt ──────────────────────────────────────────────────
 function systemPrompt() {
   const guides = {
-    A1: `Speak ONLY in simple English. Mix in 1-2 German words per reply and always translate them. Very short sentences. Super warm and patient. Always end with an easy question.`,
-    A2: `Speak mostly English, include simple German phrases (always translated). Use present tense. Very gentle with errors. 2 sentences max. End with a simple question or German phrase to repeat.`,
-    B1: `Mix German and English roughly, standard german. Present and past tense. Gently weave corrections in naturally. Engaging and encouraging. Always end with a question in German.`,
-    B2: `Speak mostly German (70%). Introduce varied tenses and vocabulary. Correct errors smoothly in conversation. Challenge them a little. End with a German question.`,
-    C1: `Speak almost entirely in German (90%). Use idioms, rich vocabulary, complex structures. Only correct significant errors. Natural, genuine conversation. End with a thought-provoking question.`,
-    C2: `Speak exclusively in German. Sophisticated vocabulary, regional nuance, complex grammar. Converse as with a native speaker. Rarely correct. Engaging, intellectual dialogue.`
+    A1: `You are speaking with a complete beginner. Respond ONLY in simple English. Weave 1-2 German words naturally into your reply and translate them immediately. Very short sentences. If they made a mistake, gently say the correct version aloud in a natural way. Warmly praise any correct German they used. Always end with a very simple question.`,
+
+    A2: `You are speaking with an elementary learner. Respond mostly in English, weave in simple German phrases and always translate them. If they made a grammar mistake, naturally say the correct form in your response without making it feel like a lecture. Celebrate correct usage warmly. End with a simple question.`,
+
+    B1: `You are speaking with an intermediate learner. Mix German and English 50/50. When they make a mistake, naturally use the correct form in your reply so they hear it — for example if they said a wrong case, use the right case naturally in your response. When they get something right, acknowledge it warmly and briefly. End with a question in German.`,
+
+    B2: `You are speaking with an upper-intermediate learner. Speak 70% in German. Smoothly model correct grammar by using it naturally in your reply. For clear errors, briefly and warmly name the correction, for example: "Du meintest wahrscheinlich..." End with a challenging German question.`,
+
+    C1: `You are speaking with an advanced learner. Speak 90% in German. Only address significant or interesting errors — weave corrections naturally into the flow of conversation. Occasionally compliment sophisticated usage. End with a thought-provoking question auf Deutsch.`,
+
+    C2: `You are speaking with a mastery-level learner. Speak 100% in German. Converse as with a native speaker. Only note truly unusual errors in passing. Engage intellectually. End with a stimulating question.`
   };
 
-  return `You are DeutschMeister, a warm and natural German conversation tutor in a LIVE VOICE chat.
+  return `You are DeutschMeister, a warm German conversation coach in a LIVE VOICE chat.
 
 STUDENT LEVEL: ${level}
-INSTRUCTION: ${guides[level]}
+ROLE: ${guides[level]}
 
-ABSOLUTE VOICE RULES — follow these without exception:
-1. Maximum 2-3 sentences per reply. This is voice — be concise.
-2. NO bullet points, NO numbered lists, NO markdown, NO asterisks, NO bold, NO symbols.
-3. NO emojis whatsoever.
-4. Speak as if talking naturally to a friend — flowing, warm, conversational.
-5. Always end your reply with a question or invitation to keep the conversation going.
-6. If they make a grammar mistake, correct it by naturally using the correct form in your reply — never make it awkward.
-7. Be encouraging and make them feel confident.`;
+COACHING PHILOSOPHY:
+- Your #1 job is to help them improve. Every reply should teach through conversation — not lecture.
+- When they speak CORRECTLY: briefly and warmly acknowledge it ("Sehr gut!", "Das war perfekt!", "Genau richtig!") — woven naturally, not forced.
+- When they make a MISTAKE: do NOT say "you made a mistake". Instead, model the correct form naturally in your reply. Use it confidently so they hear the right version.
+- After modeling a correction, you may briefly name it — e.g. "we use Dativ here" — but keep it very short.
+- Build their confidence. Make them feel progress with every exchange.
+
+ABSOLUTE VOICE RULES:
+1. Maximum 3 sentences. This is VOICE — be concise and natural.
+2. NO bullet points, lists, markdown, asterisks, bold, or symbols of any kind.
+3. NO emojis.
+4. Sound like a warm, knowledgeable friend — not a textbook.
+5. Always end with a question or prompt to keep them talking.`;
+}
+
+// ── Analysis prompt (returns JSON only) ───────────────────────────
+function analysisPrompt() {
+  return `You are a precise German language analyzer. The student is level ${level}.
+
+Analyze the German text provided and return ONLY a valid JSON object — no markdown, no explanation, nothing else.
+
+JSON format:
+{
+  "overallCorrect": true or false (true = no significant errors),
+  "praise": "one short encouraging sentence about what they did well, or empty string if nothing notable",
+  "errors": [
+    {
+      "wrong": "the exact wrong word/phrase they said",
+      "correct": "the correct version",
+      "why": "one very short explanation in English, max 8 words"
+    }
+  ]
+}
+
+Rules:
+- For A1/A2: only flag clear, basic errors (wrong verb form, totally wrong word). Ignore minor things.
+- For B1/B2: flag grammar errors, wrong case, wrong article, word order issues.
+- For C1/C2: flag subtle errors, register issues, unnatural phrasing.
+- If the text is English, return { "overallCorrect": true, "praise": "Keep trying in German!", "errors": [] }
+- If no errors at all, return empty errors array and write genuine praise.
+- Keep "why" to max 6 words.
+- Return ONLY the JSON. No other text.`;
+}
+
+// ── Render correction card ─────────────────────────────────────────
+function renderCorrectionCard(analysis) {
+  const card  = document.getElementById('correctionCard');
+  const label = document.getElementById('correctionLabel');
+  const body  = document.getElementById('correctionBody');
+
+  const hasErrors = analysis.errors && analysis.errors.length > 0;
+  const hasPraise = analysis.praise && analysis.praise.trim().length > 0;
+
+  if (!hasErrors && !hasPraise) { hideCorrectionCard(); return; }
+
+  // Update stats
+  if (!hasErrors) totalCorrect++;
+  else            totalErrors++;
+
+  // Card type
+  if (!hasErrors) {
+    card.className = 'correction-card visible all-good';
+    label.innerHTML = '&#10003; Great German!';
+  } else if (hasPraise) {
+    card.className = 'correction-card visible mixed';
+    label.innerHTML = '&#9998; Feedback';
+  } else {
+    card.className = 'correction-card visible has-errors';
+    label.innerHTML = '&#9998; Let\'s fix this';
+  }
+
+  let html = '';
+
+  // Praise block
+  if (hasPraise) {
+    html += `<div class="correction-row"><div class="praise-text">&#10022; ${esc(analysis.praise)}</div></div>`;
+  }
+
+  // Error rows
+  if (hasErrors) {
+    analysis.errors.forEach(err => {
+      html += `<div class="correction-row">
+        <div class="correction-wrong">&#10005; ${esc(err.wrong)}</div>
+        <div class="correction-right">&#10003; ${esc(err.correct)}</div>
+        <div class="correction-why">${esc(err.why)}</div>
+      </div>`;
+    });
+  }
+
+  // Running stats
+  const total = totalCorrect + totalErrors;
+  if (total > 1) {
+    const pct = Math.round((totalCorrect / total) * 100);
+    html += `<div class="stats-row">
+      <div class="stat-chip good">&#10022; ${totalCorrect} correct</div>
+      <div class="stat-chip bad">&#9998; ${totalErrors} corrected</div>
+      <div class="stat-chip good">${pct}% accuracy</div>
+    </div>`;
+  }
+
+  body.innerHTML = html;
+}
+
+function hideCorrectionCard() {
+  const card = document.getElementById('correctionCard');
+  card.className = 'correction-card';
 }
 
 // ── Text-to-speech ─────────────────────────────────────────────────
